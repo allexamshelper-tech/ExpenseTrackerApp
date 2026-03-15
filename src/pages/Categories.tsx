@@ -8,7 +8,7 @@ export default function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [type, setType] = useState<'income' | 'expense' | 'adjustment'>('expense');
   const [color, setColor] = useState('#3b82f6');
 
   useEffect(() => {
@@ -45,11 +45,33 @@ export default function Categories() {
 
   const handleSeedDefaults = async () => {
     const defaultCategories = [
+      // Income
       { name: "Salary", type: "income", icon: "Wallet", color: "#10b981" },
-      { name: "Food", type: "expense", icon: "Utensils", color: "#ef4444" },
+      { name: "Bonus", type: "income", icon: "TrendingUp", color: "#059669" },
+      { name: "Freelance", type: "income", icon: "Briefcase", color: "#3b82f6" },
+      { name: "Investment", type: "income", icon: "BarChart", color: "#8b5cf6" },
+      { name: "Rental Income", type: "income", icon: "Home", color: "#14b8a6" },
+      { name: "Gifts", type: "income", icon: "Gift", color: "#ec4899" },
+      
+      // Expense
+      { name: "Food & Dining", type: "expense", icon: "Utensils", color: "#ef4444" },
       { name: "Transport", type: "expense", icon: "Car", color: "#3b82f6" },
-      { name: "Rent", type: "expense", icon: "Home", color: "#8b5cf6" },
+      { name: "Rent & Bills", type: "expense", icon: "Home", color: "#8b5cf6" },
       { name: "Shopping", type: "expense", icon: "ShoppingBag", color: "#f59e0b" },
+      { name: "Entertainment", type: "expense", icon: "Film", color: "#ec4899" },
+      { name: "Health", type: "expense", icon: "HeartPulse", color: "#f43f5e" },
+      { name: "Utilities", type: "expense", icon: "Zap", color: "#06b6d4" },
+      { name: "Education", type: "expense", icon: "Book", color: "#4f46e5" },
+      { name: "Travel", type: "expense", icon: "Plane", color: "#0ea5e9" },
+      { name: "Insurance", type: "expense", icon: "Shield", color: "#64748b" },
+      { name: "Maintenance", type: "expense", icon: "Settings", color: "#475569" },
+      
+      // Adjustment
+      { name: "Opening Balance", type: "adjustment", icon: "RefreshCw", color: "#6366f1" },
+      { name: "Carryover", type: "adjustment", icon: "ArrowRightLeft", color: "#4f46e5" },
+      { name: "Correction", type: "adjustment", icon: "AlertCircle", color: "#f43f5e" },
+      { name: "Tax Adjustment", type: "adjustment", icon: "FileText", color: "#1e293b" },
+      { name: "Refund", type: "adjustment", icon: "Undo", color: "#10b981" },
     ];
 
     try {
@@ -109,20 +131,27 @@ export default function Categories() {
 
             <div className="space-y-2">
               <label className="text-sm font-bold text-zinc-700">Type</label>
-              <div className="flex bg-zinc-100 p-1 rounded-xl">
+              <div className="flex bg-zinc-100 p-1 rounded-xl gap-1">
                 <button
                   type="button"
                   onClick={() => setType('expense')}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${type === 'expense' ? 'bg-white text-black shadow-sm' : 'text-zinc-500'}`}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-zinc-500'}`}
                 >
                   Expense
                 </button>
                 <button
                   type="button"
                   onClick={() => setType('income')}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500'}`}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500'}`}
                 >
                   Income
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('adjustment')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'adjustment' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500'}`}
+                >
+                  Adjustment
                 </button>
               </div>
             </div>

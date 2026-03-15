@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { User, Transaction, ActivityLog } from '../types';
-import { Users, Receipt, History, Search, Filter, Download } from 'lucide-react';
+import { Users, Receipt, History, Search, Filter, Download, Trash2, Shield, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
@@ -14,25 +14,50 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'users' | 'transactions' | 'logs'>('users');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [usersData, transData, logsData] = await Promise.all([
+        api.admin.getAllUsers(),
+        api.admin.getAllTransactions(),
+        api.admin.getAllLogs()
+      ]);
+      setUsers(usersData);
+      setTransactions(transData);
+      setLogs(logsData);
+    } catch (err) {
+      console.error('Error fetching admin data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [usersData, transData, logsData] = await Promise.all([
-          api.admin.getAllUsers(),
-          api.admin.getAllTransactions(),
-          api.admin.getAllLogs()
-        ]);
-        setUsers(usersData);
-        setTransactions(transData);
-        setLogs(logsData);
-      } catch (err) {
-        console.error('Error fetching admin data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
+
+  const handleDeleteUser = async (id: string) => {
+    if (confirm('Are you sure you want to delete this user? All their data will be lost.')) {
+      try {
+        await api.admin.deleteUser(id);
+        fetchData();
+      } catch (err) {
+        alert('Failed to delete user');
+      }
+    }
+  };
+
+  const handleToggleRole = async (user: User) => {
+    const newRole = user.role === 'admin' ? 'user' : 'admin';
+    if (confirm(`Change ${user.name}'s role to ${newRole}?`)) {
+      try {
+        await api.admin.updateUserRole(user.id, newRole);
+        fetchData();
+      } catch (err) {
+        alert('Failed to update role');
+      }
+    }
+  };
 
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -151,6 +176,7 @@ export default function AdminDashboard() {
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Contact</th>
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Joined</th>
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -177,6 +203,24 @@ export default function AdminDashboard() {
                       <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                         {user.role}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleToggleRole(user)}
+                          title={user.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
+                          className="p-2 text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-all"
+                        >
+                          {user.role === 'admin' ? <ShieldAlert className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          title="Delete User"
+                          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

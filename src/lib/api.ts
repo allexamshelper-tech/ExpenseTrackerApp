@@ -17,6 +17,24 @@ export const api = {
       });
       if (error) throw error;
 
+      // Manually insert into profiles table to ensure server-side lookups work
+      // This is helpful if there's no database trigger set up
+      if (authData.user) {
+        try {
+          await supabase.from('profiles').insert([{
+            id: authData.user.id,
+            email: data.email,
+            name: data.name,
+            phone: data.phone,
+            role: data.email === 'cbogineni@gmail.com' ? 'admin' : 'user',
+            currency: '₹'
+          }]);
+        } catch (profileErr) {
+          console.error('Failed to create profile record:', profileErr);
+          // Don't throw here, as auth was successful
+        }
+      }
+
       // Log activity
       await api.logs.create('Register', `User ${data.name} registered`);
 
@@ -83,6 +101,33 @@ export const api = {
       await api.logs.create('Update Profile', `User updated their profile`);
 
       return result;
+    },
+
+    forgotPassword: async (identifier: string) => {
+      // identifier can be email or phone
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to send OTP');
+      }
+      return response.json();
+    },
+
+    resetPassword: async (data: any) => {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to reset password');
+      }
+      return response.json();
     }
   },
 
@@ -122,6 +167,22 @@ export const api = {
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data as ActivityLog[];
+    },
+    deleteUser: async (id: string) => {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      await api.logs.create('Admin Action', `Deleted user ID ${id}`);
+    },
+    updateUserRole: async (id: string, role: 'admin' | 'user') => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role })
+        .eq('id', id);
+      if (error) throw error;
+      await api.logs.create('Admin Action', `Updated user ID ${id} role to ${role}`);
     }
   },
 
@@ -200,7 +261,10 @@ export const api = {
         .insert([{ ...data, user_id: user?.id }])
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('Transaction creation error:', error);
+        throw error;
+      }
 
       await api.logs.create('Create Transaction', `Created ${data.type} of ₹${data.amount}`);
       return result;
@@ -242,6 +306,14 @@ export const api = {
       await api.logs.create('Update Budget', `Updated budget for category ID ${data.category_id}`);
       return result;
     },
+    delete: async (id: number | string) => {
+      const { error } = await supabase
+        .from('budgets')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      await api.logs.create('Delete Budget', `Deleted budget ID ${id}`);
+    },
   },
 
   summary: {
@@ -257,23 +329,26 @@ export const api = {
 
       let totalIncome = 0;
       let totalExpense = 0;
+      let totalAdjustment = 0;
       const catMap: Record<string, { total: number, color: string }> = {};
 
       (transactions as any[]).forEach(t => {
         if (t.type === 'income') {
           totalIncome += t.amount;
-        } else {
+        } else if (t.type === 'expense') {
           totalExpense += t.amount;
           const catName = t.categories?.name || 'Uncategorized';
           if (!catMap[catName]) {
             catMap[catName] = { total: 0, color: t.categories?.color || '#ccc' };
           }
           catMap[catName].total += t.amount;
+        } else if (t.type === 'adjustment') {
+          totalAdjustment += t.amount;
         }
       });
 
       return {
-        balance: totalIncome - totalExpense,
+        balance: totalIncome - totalExpense + totalAdjustment,
         totalIncome,
         totalExpense,
         categorySpending: Object.entries(catMap).map(([name, data]) => ({

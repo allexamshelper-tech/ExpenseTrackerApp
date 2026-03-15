@@ -1,22 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { useSearchParams } from 'react-router-dom';
 import { Transaction, Category } from '../types';
-import { Plus, Search, Filter, Trash2, Calendar, IndianRupee, Tag, FileText, ChevronDown } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Calendar, IndianRupee, Tag, FileText, ChevronDown, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Transactions() {
+  const [searchParams] = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(searchParams.get('add') === 'true');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'adjustment'>('all');
 
   // Form State
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [type, setType] = useState<'income' | 'expense' | 'adjustment'>('expense');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -33,14 +35,32 @@ export default function Transactions() {
       ]);
       setTransactions(t);
       setCategories(c);
-      if (c.length > 0) setCategoryId(c[0].id.toString());
+      
+      // Set initial category based on default type (expense)
+      const defaultCat = c.find(cat => cat.type === 'expense');
+      if (defaultCat) setCategoryId(defaultCat.id.toString());
     } finally {
       setLoading(false);
     }
   };
 
+  const handleTypeChange = (newType: 'income' | 'expense' | 'adjustment') => {
+    setType(newType);
+    // Auto-select first category of that type
+    const firstCatOfType = categories.find(c => c.type === newType);
+    if (firstCatOfType) {
+      setCategoryId(firstCatOfType.id.toString());
+    } else {
+      setCategoryId('');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!categoryId) {
+      alert('Please select a category');
+      return;
+    }
     try {
       await api.transactions.create({
         category_id: parseInt(categoryId),
@@ -53,8 +73,9 @@ export default function Transactions() {
       setAmount('');
       setDescription('');
       loadData();
-    } catch (err) {
-      alert('Failed to add transaction');
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      alert(err.message || 'Failed to add transaction');
     }
   };
 
@@ -122,8 +143,9 @@ export default function Transactions() {
                   onChange={(e) => setCategoryId(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all appearance-none bg-white"
                 >
-                  {categories.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  <option value="" disabled>Select a category</option>
+                  {categories.filter(c => c.type === type).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -156,20 +178,27 @@ export default function Transactions() {
 
               <div className="space-y-2">
                 <label className="text-sm font-bold text-zinc-700">Type</label>
-                <div className="flex bg-zinc-100 p-1 rounded-xl">
+                <div className="flex bg-zinc-100 p-1 rounded-xl gap-1">
                   <button
                     type="button"
-                    onClick={() => setType('expense')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${type === 'expense' ? 'bg-white text-black shadow-sm' : 'text-zinc-500'}`}
+                    onClick={() => handleTypeChange('expense')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-zinc-500'}`}
                   >
                     Expense
                   </button>
                   <button
                     type="button"
-                    onClick={() => setType('income')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500'}`}
+                    onClick={() => handleTypeChange('income')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500'}`}
                   >
                     Income
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('adjustment')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${type === 'adjustment' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500'}`}
+                  >
+                    Adjustment
                   </button>
                 </div>
               </div>
@@ -199,14 +228,14 @@ export default function Transactions() {
             className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white border border-black/5 focus:border-black outline-none transition-all"
           />
         </div>
-        <div className="flex gap-2">
-          {(['all', 'income', 'expense'] as const).map(type => (
+        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
+          {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-5 py-3 rounded-2xl font-bold capitalize transition-all ${
+              className={`px-5 py-3 rounded-2xl font-bold capitalize transition-all whitespace-nowrap ${
                 filterType === type 
-                  ? 'bg-black text-white shadow-md' 
+                  ? 'bg-brand-primary text-white shadow-md' 
                   : 'bg-white text-zinc-500 hover:bg-zinc-50 border border-black/5'
               }`}
             >

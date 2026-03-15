@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Budget, Category, Transaction } from '../types';
-import { Target, Plus, AlertCircle, CheckCircle2, TrendingUp } from 'lucide-react';
+import { Target, Plus, AlertCircle, CheckCircle2, TrendingUp, Trash2, Edit2, X } from 'lucide-react';
 import { format, startOfMonth } from 'date-fns';
 import { motion } from 'motion/react';
 
@@ -12,6 +12,7 @@ export default function Budgets() {
   const [loading, setLoading] = useState(true);
   
   // Form state
+  const [editingId, setEditingId] = useState<number | string | null>(null);
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -29,9 +30,10 @@ export default function Budgets() {
         api.transactions.getAll()
       ]);
       setBudgets(b);
-      setCategories(c.filter(cat => cat.type === 'expense'));
+      const expenseCats = c.filter(cat => cat.type === 'expense');
+      setCategories(expenseCats);
       setTransactions(t);
-      if (c.length > 0) setCategoryId(c.find(cat => cat.type === 'expense')?.id.toString() || '');
+      if (expenseCats.length > 0 && !categoryId) setCategoryId(expenseCats[0].id.toString());
     } finally {
       setLoading(false);
     }
@@ -41,15 +43,40 @@ export default function Budgets() {
     e.preventDefault();
     try {
       await api.budgets.upsert({
+        id: editingId as any,
         category_id: parseInt(categoryId),
         amount: parseFloat(amount),
         month
       });
       setAmount('');
+      setEditingId(null);
       loadData();
     } catch (err) {
       alert('Failed to save budget');
     }
+  };
+
+  const handleDelete = async (id: number | string) => {
+    if (confirm('Are you sure you want to delete this budget?')) {
+      try {
+        await api.budgets.delete(id);
+        loadData();
+      } catch (err) {
+        alert('Failed to delete budget');
+      }
+    }
+  };
+
+  const handleEdit = (b: Budget) => {
+    setEditingId(b.id);
+    setCategoryId(b.category_id.toString());
+    setAmount(b.amount.toString());
+    setMonth(b.month);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setAmount('');
   };
 
   const currentMonthTransactions = transactions.filter(t => 
@@ -73,7 +100,18 @@ export default function Budgets() {
         {/* Set Budget Form */}
         <div className="lg:col-span-1">
           <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6 sticky top-8">
-            <h2 className="text-xl font-bold">Set Budget</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">{editingId ? 'Edit Budget' : 'Set Budget'}</h2>
+              {editingId && (
+                <button 
+                  type="button" 
+                  onClick={cancelEdit}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
             
             <div className="space-y-2">
               <label className="text-sm font-bold text-zinc-700">Category</label>
@@ -118,7 +156,7 @@ export default function Budgets() {
               className="w-full bg-brand-accent text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
             >
               <Target className="w-5 h-5" />
-              Save Budget
+              {editingId ? 'Update Budget' : 'Save Budget'}
             </button>
           </form>
         </div>
@@ -176,9 +214,25 @@ export default function Budgets() {
                           </span>
                         )}
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-bold text-zinc-900">₹{spent.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        <span className="text-sm text-zinc-400"> / ₹{b.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      <div className="text-right flex items-center gap-4">
+                        <div>
+                          <span className="text-sm font-bold text-zinc-900">₹{spent.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                          <span className="text-sm text-zinc-400"> / ₹{b.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleEdit(b)}
+                            className="p-2 text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-all"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(b.id)}
+                            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                     

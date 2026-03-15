@@ -22,7 +22,7 @@ export interface Category {
   id: string | number;
   user_id: string | number;
   name: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'adjustment';
   icon: string;
   color: string;
 }
@@ -32,7 +32,7 @@ export interface Transaction {
   user_id: string | number;
   category_id: string | number;
   amount: number;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'adjustment';
   description: string;
   date: string;
   category_name?: string;

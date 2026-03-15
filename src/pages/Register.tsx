@@ -19,6 +19,22 @@ export default function Register() {
     setLoading(true);
     try {
       await api.auth.register({ name, email, password, phone });
+      
+      // Send welcome email
+      try {
+        await fetch('/api/email/welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            name,
+            details: `Email: ${email}\nPhone: ${phone}`
+          })
+        });
+      } catch (emailErr) {
+        console.error('Failed to send welcome email:', emailErr);
+      }
+
       navigate('/login');
     } catch (err: any) {
       setError(err.message);

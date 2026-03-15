@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../App';
+import { useNavigate } from 'react-router-dom';
 import { Summary, Transaction } from '../types';
 import { TrendingUp, TrendingDown, Wallet, Plus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
@@ -11,6 +12,9 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const now = new Date();
@@ -28,8 +32,6 @@ export default function Dashboard() {
   }, []);
 
   if (loading) return <div className="flex items-center justify-center h-64">Loading dashboard...</div>;
-
-  const { user } = useAuth();
   const stats = [
     { name: 'Total Balance', value: summary?.balance || 0, icon: Wallet, color: 'bg-brand-primary', textColor: 'text-white' },
     { name: 'Total Income', value: summary?.totalIncome || 0, icon: TrendingUp, color: 'bg-emerald-50', textColor: 'text-emerald-600' },
@@ -52,7 +54,10 @@ export default function Dashboard() {
             <p className="text-zinc-500">Welcome back, {user?.name}! Here's your monthly summary.</p>
           </div>
         </div>
-        <button className="flex items-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20">
+        <button 
+          onClick={() => navigate('/transactions?add=true')}
+          className="flex items-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+        >
           <Plus className="w-5 h-5" />
           Add Transaction
         </button>

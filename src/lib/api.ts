@@ -150,8 +150,21 @@ export const api = {
       });
       
       const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType || !contentType.includes("application/json")) {
-        throw new Error('Failed to fetch users. Backend might be unavailable.');
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch users.';
+        if (contentType && contentType.includes("application/json")) {
+          const err = await response.json();
+          errorMessage = err.message || errorMessage;
+        } else {
+          const text = await response.text();
+          console.error('Fetch users non-JSON error:', text);
+          errorMessage += ' Backend might be unavailable or returned an error.';
+        }
+        throw new Error(errorMessage);
+      }
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error('Invalid response from server. Expected JSON.');
       }
       return response.json();
     },
@@ -188,8 +201,21 @@ export const api = {
       });
       
       const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType || !contentType.includes("application/json")) {
-        throw new Error('Failed to fetch transactions. Backend might be unavailable.');
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch transactions.';
+        if (contentType && contentType.includes("application/json")) {
+          const err = await response.json();
+          errorMessage = err.message || errorMessage;
+        } else {
+          const text = await response.text();
+          console.error('Fetch transactions non-JSON error:', text);
+          errorMessage += ' Backend might be unavailable or returned an error.';
+        }
+        throw new Error(errorMessage);
+      }
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error('Invalid response from server. Expected JSON.');
       }
       return response.json();
     },
@@ -210,8 +236,21 @@ export const api = {
       });
       
       const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType || !contentType.includes("application/json")) {
-        throw new Error('Failed to fetch logs. Backend might be unavailable.');
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch logs.';
+        if (contentType && contentType.includes("application/json")) {
+          const err = await response.json();
+          errorMessage = err.message || errorMessage;
+        } else {
+          const text = await response.text();
+          console.error('Fetch logs non-JSON error:', text);
+          errorMessage += ' Backend might be unavailable or returned an error.';
+        }
+        throw new Error(errorMessage);
+      }
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error('Invalid response from server. Expected JSON.');
       }
       return response.json();
     },
@@ -256,6 +295,35 @@ export const api = {
         console.error('Create user error response:', text);
         throw new Error('Failed to create user. Backend might be unavailable or returned an error.');
       }
+      return response.json();
+    },
+    syncProfiles: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/sync-profiles', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!response.ok) {
+        let errorMessage = 'Failed to sync profiles.';
+        if (contentType && contentType.includes("application/json")) {
+          const err = await response.json();
+          errorMessage = err.message || errorMessage;
+        } else {
+          const text = await response.text();
+          console.error('Sync profiles non-JSON error:', text);
+          errorMessage += ' Backend might be unavailable or returned an error.';
+        }
+        throw new Error(errorMessage);
+      }
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error('Invalid response from server. Expected JSON.');
+      }
+      
       return response.json();
     }
   },

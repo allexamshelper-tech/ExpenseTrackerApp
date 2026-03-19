@@ -58,18 +58,7 @@ export default function AdminDashboard() {
   const handleSyncProfiles = async () => {
     setSyncing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch('/api/admin/sync-profiles', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      });
-      const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType || !contentType.includes("application/json")) {
-        throw new Error('Failed to sync profiles. Backend might be unavailable.');
-      }
-      const result = await response.json();
+      const result = await api.admin.syncProfiles();
       alert(`Sync complete! ${result.synced.length} profiles created.`);
       fetchData();
     } catch (err: any) {

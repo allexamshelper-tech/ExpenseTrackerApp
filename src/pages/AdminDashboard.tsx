@@ -152,18 +152,18 @@ export default function AdminDashboard() {
   };
 
   const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredTransactions = transactions.filter(t => 
-    t.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    t.user_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    (t.description || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (t.user_name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredLogs = logs.filter(l => 
-    l.action.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    l.user_name.toLowerCase().includes(searchTerm.toLowerCase())
+    (l.action || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (l.user_name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Chart Data
@@ -297,9 +297,9 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold">
                             {user.avatar_url ? (
-                              <img src={user.avatar_url} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                              <img src={user.avatar_url} alt={user.name || 'User'} className="w-full h-full rounded-full object-cover" />
                             ) : (
-                              user.name.charAt(0)
+                              (user.name || 'U').charAt(0)
                             )}
                           </div>
                           <div>
@@ -359,9 +359,9 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold shrink-0">
                         {user.avatar_url ? (
-                          <img src={user.avatar_url} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                          <img src={user.avatar_url} alt={user.name || 'User'} className="w-full h-full rounded-full object-cover" />
                         ) : (
-                          user.name.charAt(0)
+                          (user.name || 'U').charAt(0)
                         )}
                       </div>
                       <div className="min-w-0">

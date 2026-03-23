@@ -103,9 +103,19 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // Request logger
+  // Request logger (ignores internal Vite/source file requests to reduce noise)
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const isInternalRequest = 
+      req.url.startsWith('/src/') || 
+      req.url.startsWith('/@vite/') || 
+      req.url.startsWith('/node_modules/') ||
+      req.url.includes('.tsx') ||
+      req.url.includes('.ts') ||
+      req.url.includes('.css');
+
+    if (!isInternalRequest) {
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    }
     next();
   });
 

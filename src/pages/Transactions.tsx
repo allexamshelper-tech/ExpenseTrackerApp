@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useSearchParams } from 'react-router-dom';
 import { Transaction, Category } from '../types';
-import { Plus, Search, Filter, Trash2, Calendar, IndianRupee, Tag, FileText, ChevronDown, RefreshCw, Edit2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Calendar, IndianRupee, Tag, FileText, ChevronDown, RefreshCw, Edit2, X, AlertCircle, CheckCircle2, Download, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import * as XLSX from 'xlsx';
 
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -16,11 +17,11 @@ interface EditModalProps {
 }
 
 function EditTransactionModal({ transaction, categories, onClose, onSave }: EditModalProps) {
-  const [amount, setAmount] = useState(transaction.amount.toString());
-  const [categoryId, setCategoryId] = useState(transaction.category_id.toString());
-  const [type, setType] = useState<'income' | 'expense' | 'adjustment'>(transaction.type);
-  const [description, setDescription] = useState(transaction.description || '');
-  const [date, setDate] = useState(format(new Date(transaction.date), 'yyyy-MM-dd'));
+  const [amount, setAmount] = useState(transaction?.amount?.toString() || '0');
+  const [categoryId, setCategoryId] = useState(transaction?.category_id?.toString() || '');
+  const [type, setType] = useState<'income' | 'expense' | 'adjustment'>(transaction?.type || 'expense');
+  const [description, setDescription] = useState(transaction?.description || '');
+  const [date, setDate] = useState(transaction?.date ? format(new Date(transaction.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -196,7 +197,7 @@ export default function Transactions() {
       
       // Set initial category based on default type (expense)
       const defaultCat = c.find(cat => cat.type === 'expense');
-      if (defaultCat) setCategoryId(defaultCat.id.toString());
+      if (defaultCat) setCategoryId(defaultCat.id?.toString() || '');
     } finally {
       setLoading(false);
     }
@@ -207,7 +208,7 @@ export default function Transactions() {
     // Auto-select first category of that type
     const firstCatOfType = categories.find(c => c.type === newType);
     if (firstCatOfType) {
-      setCategoryId(firstCatOfType.id.toString());
+      setCategoryId(firstCatOfType.id?.toString() || '');
     } else {
       setCategoryId('');
     }
@@ -256,6 +257,65 @@ export default function Transactions() {
     }
   };
 
+  const handleExportExcel = () => {
+    if (filteredTransactions.length === 0) {
+      setError('No transactions to export');
+      return;
+    }
+    const data = filteredTransactions.map(t => ({
+      Date: format(new Date(t.date), 'yyyy-MM-dd'),
+      Category: t.category_name,
+      Type: t.type,
+      Description: t.description || '',
+      Amount: t.amount
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+    XLSX.writeFile(workbook, `Transactions_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    setSuccess('Excel file downloaded successfully');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleCopyTransactions = () => {
+    if (filteredTransactions.length === 0) {
+      setError('No transactions to copy');
+      return;
+    }
+
+    const data = filteredTransactions.map(t => ({
+      date: format(new Date(t.date), 'yyyy-MM-dd'),
+      category: t.category_name || 'Uncategorized',
+      type: t.type,
+      description: t.description || '-',
+      amount: `₹${t.amount.toLocaleString('en-IN')}`
+    }));
+
+    const headers = ['Date', 'Category', 'Type', 'Description', 'Amount'];
+    const colWidths = {
+      date: Math.max(headers[0].length, ...data.map(d => d.date.length)),
+      category: Math.max(headers[1].length, ...data.map(d => d.category.length)),
+      type: Math.max(headers[2].length, ...data.map(d => d.type.length)),
+      description: Math.max(headers[3].length, ...data.map(d => d.description.length)),
+      amount: Math.max(headers[4].length, ...data.map(d => d.amount.length))
+    };
+
+    const pad = (str: string, width: number) => str.padEnd(width);
+    const border = `+${'-'.repeat(colWidths.date + 2)}+${'-'.repeat(colWidths.category + 2)}+${'-'.repeat(colWidths.type + 2)}+${'-'.repeat(colWidths.description + 2)}+${'-'.repeat(colWidths.amount + 2)}+`;
+    const headerRow = `| ${pad(headers[0], colWidths.date)} | ${pad(headers[1], colWidths.category)} | ${pad(headers[2], colWidths.type)} | ${pad(headers[3], colWidths.description)} | ${pad(headers[4], colWidths.amount)} |`;
+    
+    const rows = data.map(d => 
+      `| ${pad(d.date, colWidths.date)} | ${pad(d.category, colWidths.category)} | ${pad(d.type, colWidths.type)} | ${pad(d.description, colWidths.description)} | ${pad(d.amount, colWidths.amount)} |`
+    ).join('\n' + border + '\n');
+
+    const table = `${border}\n${headerRow}\n${border}\n${rows}\n${border}`;
+    
+    navigator.clipboard.writeText(table);
+    setSuccess('Transactions table copied to clipboard');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
   const filteredTransactions = transactions.filter(t => {
     const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           t.category_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -270,13 +330,31 @@ export default function Transactions() {
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Transactions</h1>
           <p className="text-zinc-500">Manage your income and expenses here.</p>
         </div>
-        <button 
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
-        >
-          {showAddForm ? <ChevronDown className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-          {showAddForm ? 'Close Form' : 'Add Transaction'}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={handleCopyTransactions}
+            className="flex items-center gap-2 bg-white text-zinc-600 px-4 py-3 rounded-2xl font-bold hover:bg-zinc-50 border border-black/5 transition-all shadow-sm"
+            title="Copy to Clipboard"
+          >
+            <Copy className="w-5 h-5" />
+            <span className="hidden sm:inline">Copy</span>
+          </button>
+          <button 
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 bg-white text-zinc-600 px-4 py-3 rounded-2xl font-bold hover:bg-zinc-50 border border-black/5 transition-all shadow-sm"
+            title="Export to Excel"
+          >
+            <Download className="w-5 h-5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+          <button 
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+          >
+            {showAddForm ? <ChevronDown className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+            {showAddForm ? 'Close Form' : 'Add Transaction'}
+          </button>
+        </div>
       </header>
 
       <AnimatePresence>

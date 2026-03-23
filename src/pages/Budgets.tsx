@@ -39,7 +39,7 @@ export default function Budgets() {
       const expenseCats = c.filter(cat => cat.type === 'expense');
       setCategories(expenseCats);
       setTransactions(t);
-      if (expenseCats.length > 0 && !categoryId) setCategoryId(expenseCats[0].id.toString());
+      if (expenseCats.length > 0 && !categoryId) setCategoryId(expenseCats[0].id?.toString() || '');
     } finally {
       setLoading(false);
     }
@@ -86,8 +86,8 @@ export default function Budgets() {
 
   const handleEdit = (b: Budget) => {
     setEditingId(b.id);
-    setCategoryId(b.category_id.toString());
-    setAmount(b.amount.toString());
+    setCategoryId(b.category_id?.toString() || '');
+    setAmount(b.amount?.toString() || '0');
     setMonth(b.month);
   };
 

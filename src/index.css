@@ -11,4 +11,21 @@
 body {
   background-color: var(--color-brand-bg);
   color: #1a1a1a;
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent double-tap zoom on buttons and links */
+button, a {
+  touch-action: manipulation;
+}
+
+/* Native app feel for mobile */
+@media (max-width: 768px) {
+  #root {
+    overflow-x: hidden;
+    position: relative;
+    width: 100%;
+  }
 }

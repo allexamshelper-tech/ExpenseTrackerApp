@@ -3,6 +3,7 @@ import { useAuth } from '../App';
 import { api } from '../lib/api';
 import { User, Camera, Phone, Mail, User as UserIcon, Globe, Save, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import UserBadge from '../components/UserBadge';
 
 export default function Profile() {
   const { user, login } = useAuth();
@@ -64,7 +65,10 @@ export default function Profile() {
                 <Camera className="w-5 h-5" />
               </button>
             </div>
-            <h2 className="text-xl font-bold text-zinc-900">{name}</h2>
+            <h2 className="text-xl font-bold text-zinc-900 flex items-center justify-center">
+              {name}
+              <UserBadge role={user?.role} className="ml-1" size={18} />
+            </h2>
             <p className="text-zinc-500 text-sm mb-4">{user?.email}</p>
             <div className="w-full pt-6 border-t border-zinc-100 flex flex-col gap-3">
               <div className="flex items-center gap-3 text-sm text-zinc-600">

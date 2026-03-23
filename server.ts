@@ -109,12 +109,6 @@ async function startServer() {
     next();
   });
 
-  // Request logger
-  app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-  });
-
   // Admin Middleware
   const isAdmin = async (req: any, res: any, next: any) => {
     console.log(`Admin middleware check for: ${req.method} ${req.url}`);

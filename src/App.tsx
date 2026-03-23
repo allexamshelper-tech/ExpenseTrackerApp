@@ -22,6 +22,7 @@ import SplashScreen from './components/SplashScreen';
 import LoadingSpinner from './components/LoadingSpinner';
 import NotFound from './pages/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
+import UserBadge from './components/UserBadge';
 
 interface AuthContextType {
   user: User | null;
@@ -145,17 +146,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="px-4 py-3 mb-4 bg-white/5 rounded-2xl">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Logged In As</p>
-              {user?.role === 'admin' ? (
-                <span className="flex items-center gap-0.5 text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-lg font-black uppercase tracking-tighter">
-                  Admin <ShieldCheck className="w-2.5 h-2.5" />
-                </span>
-              ) : (
-                <span className="flex items-center gap-0.5 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded-lg font-black uppercase tracking-tighter">
-                  User <ShieldCheck className="w-2.5 h-2.5" />
-                </span>
-              )}
             </div>
-            <p className="font-bold text-white truncate">{user?.name}</p>
+            <p className="font-bold text-white truncate flex items-center">
+              {user?.name}
+              <UserBadge role={user?.role} className="ml-1" />
+            </p>
             <p className="text-[10px] text-white/60 truncate">{user?.email}</p>
           </div>
           <button

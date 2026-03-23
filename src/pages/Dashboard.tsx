@@ -9,6 +9,7 @@ import { motion } from 'motion/react';
 import { format } from 'date-fns';
 
 import LoadingSpinner from '../components/LoadingSpinner';
+import UserBadge from '../components/UserBadge';
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -38,6 +39,7 @@ export default function Dashboard() {
     { name: 'Total Balance', value: summary?.balance || 0, icon: Wallet, color: 'bg-brand-primary', textColor: 'text-white' },
     { name: 'Total Income', value: summary?.totalIncome || 0, icon: TrendingUp, color: 'bg-emerald-50', textColor: 'text-emerald-600' },
     { name: 'Total Expenses', value: summary?.totalExpense || 0, icon: TrendingDown, color: 'bg-red-50', textColor: 'text-red-600' },
+    { name: 'Total Adjustments', value: summary?.totalAdjustment || 0, icon: CheckCircle2, color: 'bg-emerald-50', textColor: 'text-emerald-600' },
   ];
 
   return (
@@ -50,21 +52,28 @@ export default function Dashboard() {
             ) : (
               user?.name.charAt(0)
             )}
-            <div className="absolute bottom-0 right-0 p-0.5 bg-white rounded-tl-lg">
+            <div className="absolute bottom-0 right-0">
               {user?.role === 'admin' ? (
                 <div className="bg-red-500 p-0.5 rounded-md shadow-sm">
                   <ShieldCheck className="w-3 h-3 text-white" />
                 </div>
               ) : (
-                <div className="bg-blue-500 p-0.5 rounded-md shadow-sm">
-                  <CheckCircle2 className="w-3 h-3 text-white" />
-                </div>
+                <img 
+                  src="https://chatter.retrytech.site/asset/image/verified.svg" 
+                  alt="Verified" 
+                  className="w-4 h-4"
+                  referrerPolicy="no-referrer"
+                />
               )}
             </div>
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Dashboard</h1>
-            <p className="text-zinc-500">Welcome back, {user?.name}! Here's your monthly summary.</p>
+            <p className="text-zinc-500 flex items-center gap-1">
+              Welcome back, {user?.name}
+              <UserBadge role={user?.role} className="ml-0.5" />
+              ! Here's your monthly summary.
+            </p>
           </div>
         </div>
         <button 
@@ -76,7 +85,7 @@ export default function Dashboard() {
         </button>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => (
           <motion.div
             key={stat.name}
@@ -157,8 +166,8 @@ export default function Dashboard() {
                       <p className="text-xs text-zinc-500">{format(new Date(t.date), 'MMM d, yyyy')}</p>
                     </div>
                   </div>
-                  <div className={`font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900'}`}>
-                    {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  <div className={`font-bold ${t.type === 'income' || t.type === 'adjustment' ? 'text-emerald-600' : 'text-zinc-900'}`}>
+                    {t.type === 'income' || t.type === 'adjustment' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               ))

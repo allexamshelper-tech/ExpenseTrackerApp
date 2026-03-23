@@ -16,6 +16,7 @@ export interface ActivityLog {
   action: string;
   details: string;
   created_at: string;
+  user_role?: 'admin' | 'user';
 }
 
 export interface Category {
@@ -53,6 +54,7 @@ export interface Summary {
   balance: number;
   totalIncome: number;
   totalExpense: number;
+  totalAdjustment: number;
   categorySpending: {
     name: string;
     total: number;

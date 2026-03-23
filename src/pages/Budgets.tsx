@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { Budget, Category, Transaction } from '../types';
 import { Target, Plus, AlertCircle, CheckCircle2, TrendingUp, Trash2, Edit2, X } from 'lucide-react';
 import { format, startOfMonth } from 'date-fns';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -18,6 +18,10 @@ export default function Budgets() {
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -41,17 +45,13 @@ export default function Budgets() {
     }
   };
 
-  if (loading) return <LoadingSpinner message="Loading budgets..." />;
+  if (loading && budgets.length === 0) return <LoadingSpinner message="Loading budgets..." />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
     try {
-      console.log('Upserting budget:', {
-        id: editingId,
-        category_id: categoryId,
-        amount,
-        month
-      });
       await api.budgets.upsert({
         id: editingId as any,
         category_id: parseInt(categoryId),
@@ -60,23 +60,27 @@ export default function Budgets() {
       });
       setAmount('');
       setEditingId(null);
+      setSuccess(editingId ? 'Budget updated successfully' : 'Budget saved successfully');
       await loadData();
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       console.error('Failed to save budget:', err);
-      alert(`Failed to save budget: ${err.message || 'Unknown error'}`);
+      setError(`Failed to save budget: ${err.message || 'Unknown error'}`);
     }
   };
 
   const handleDelete = async (id: number | string) => {
-    if (confirm('Are you sure you want to delete this budget?')) {
-      try {
-        console.log('Deleting budget:', id);
-        await api.budgets.delete(id);
-        await loadData();
-      } catch (err: any) {
-        console.error('Failed to delete budget:', err);
-        alert(`Failed to delete budget: ${err.message || 'Unknown error'}`);
-      }
+    setError(null);
+    try {
+      await api.budgets.delete(id);
+      setDeleteConfirmId(null);
+      setSuccess('Budget deleted successfully');
+      await loadData();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to delete budget:', err);
+      setError(`Failed to delete budget: ${err.message || 'Unknown error'}`);
+      setDeleteConfirmId(null);
     }
   };
 
@@ -108,6 +112,37 @@ export default function Budgets() {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Budgets</h1>
         <p className="text-zinc-500">Set monthly limits for your expense categories.</p>
       </header>
+
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-2xl flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto p-1 hover:bg-red-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-3 rounded-2xl flex items-center gap-3"
+          >
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-medium">{success}</p>
+            <button onClick={() => setSuccess(null)} className="ml-auto p-1 hover:bg-emerald-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Set Budget Form */}
@@ -234,18 +269,37 @@ export default function Budgets() {
                           <span className="text-sm text-zinc-400"> / ₹{b.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleEdit(b)}
-                            className="p-2 text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-all"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(b.id)}
-                            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {deleteConfirmId === b.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleDelete(b.id)}
+                                className="p-2 text-red-600 bg-red-50 rounded-xl transition-all font-bold text-xs"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="p-2 text-zinc-400 hover:bg-zinc-100 rounded-xl transition-all"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleEdit(b)}
+                                className="p-2 text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-all"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmId(b.id)}
+                                className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { User, Transaction, ActivityLog } from '../types';
-import { Users, Receipt, History, Search, Filter, Download, Trash2, Shield, ShieldAlert, UserPlus, X, CheckCircle2, ShieldCheck, RefreshCw, Edit2, Eye, EyeOff } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Users, Receipt, History, Search, Filter, Download, Trash2, Shield, ShieldAlert, UserPlus, X, CheckCircle2, ShieldCheck, RefreshCw, Edit2, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 import LoadingSpinner from '../components/LoadingSpinner';
+import UserBadge from '../components/UserBadge';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([]);
@@ -17,7 +18,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'users' | 'transactions' | 'logs'>('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'user'>('all');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'adjustment'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -32,6 +33,10 @@ export default function AdminDashboard() {
   });
   const [creating, setCreating] = useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [roleToggleConfirmId, setRoleToggleConfirmId] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -42,17 +47,12 @@ export default function AdminDashboard() {
         api.admin.getAllTransactions(),
         api.admin.getAllLogs()
       ]);
-      console.log('Admin data fetched:', { 
-        usersCount: usersData.length, 
-        transCount: transData.length, 
-        logsCount: logsData.length 
-      });
       setUsers(usersData);
       setTransactions(transData);
       setLogs(logsData);
     } catch (err: any) {
       console.error('Error fetching admin data:', err);
-      alert(`Error fetching admin data: ${err.message || 'Unknown error'}`);
+      setError(`Error fetching admin data: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -62,10 +62,11 @@ export default function AdminDashboard() {
     setSyncing(true);
     try {
       const result = await api.admin.syncProfiles();
-      alert(`Sync complete! ${result.synced.length} profiles created.`);
+      setSuccess(`Sync complete! ${result.synced.length} profiles created.`);
       fetchData();
     } catch (err: any) {
-      alert(err.message || 'Failed to sync profiles');
+      console.error('Sync error:', err);
+      setError(`Sync failed: ${err.message || 'Unknown error'}. Please ensure SUPABASE_SERVICE_ROLE_KEY is set in the Secrets menu.`);
     } finally {
       setSyncing(false);
     }
@@ -76,25 +77,25 @@ export default function AdminDashboard() {
   }, []);
 
   const handleDeleteUser = async (id: string) => {
-    if (confirm('Are you sure you want to delete this user? All their data will be lost.')) {
-      try {
-        await api.admin.deleteUser(id);
-        fetchData();
-      } catch (err) {
-        alert('Failed to delete user');
-      }
+    try {
+      await api.admin.deleteUser(id);
+      setDeleteConfirmId(null);
+      setSuccess('User deleted successfully');
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete user');
     }
   };
 
   const handleToggleRole = async (user: User) => {
     const newRole = user.role === 'admin' ? 'user' : 'admin';
-    if (confirm(`Change ${user.name}'s role to ${newRole}?`)) {
-      try {
-        await api.admin.updateUserRole(user.id, newRole);
-        fetchData();
-      } catch (err) {
-        alert('Failed to update role');
-      }
+    try {
+      await api.admin.updateUserRole(user.id, newRole);
+      setRoleToggleConfirmId(null);
+      setSuccess(`User role updated to ${newRole}`);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update role');
     }
   };
 
@@ -123,9 +124,9 @@ export default function AdminDashboard() {
       });
       setShowEditModal(false);
       fetchData();
-      alert('User updated successfully');
+      setSuccess('User updated successfully');
     } catch (err: any) {
-      alert(`Error updating user: ${err.message}`);
+      setError(`Error updating user: ${err.message}`);
     } finally {
       setCreating(false);
     }
@@ -146,9 +147,9 @@ export default function AdminDashboard() {
         sendEmail: true
       });
       fetchData();
-      alert('User created successfully!');
+      setSuccess('User created successfully!');
     } catch (err: any) {
-      alert(err.message || 'Failed to create user');
+      setError(err.message || 'Failed to create user');
     } finally {
       setCreating(false);
     }
@@ -185,6 +186,38 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-red-50 text-red-600 p-4 rounded-2xl flex items-center gap-3 border border-red-100"
+          >
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <p className="text-sm font-medium flex-1">{error}</p>
+            <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-emerald-50 text-emerald-600 p-4 rounded-2xl flex items-center gap-3 border border-emerald-100"
+          >
+            <CheckCircle className="w-5 h-5 shrink-0" />
+            <p className="text-sm font-medium flex-1">{success}</p>
+            <button onClick={() => setSuccess(null)} className="p-1 hover:bg-emerald-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Admin Dashboard</h1>
@@ -284,6 +317,21 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-3xl border border-brand-card-border/10 shadow-sm overflow-hidden">
         {activeTab === 'users' && (
           <>
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
+              {(['all', 'admin', 'user'] as const).map(role => (
+                <button
+                  key={role}
+                  onClick={() => setFilterRole(role)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    filterRole === role 
+                      ? 'bg-zinc-900 text-white shadow-lg shadow-black/10' 
+                      : 'bg-white text-zinc-500 border border-zinc-100 hover:border-zinc-200'
+                  }`}
+                >
+                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                </button>
+              ))}
+            </div>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
@@ -309,7 +357,10 @@ export default function AdminDashboard() {
                             )}
                           </div>
                           <div>
-                            <p className="font-bold text-zinc-900">{user.name}</p>
+                            <p className="font-bold text-zinc-900 flex items-center">
+                              {user.name}
+                              <UserBadge role={user.role} className="ml-1" />
+                            </p>
                             <p className="text-xs text-zinc-500">{user.email}</p>
                           </div>
                         </div>
@@ -336,14 +387,14 @@ export default function AdminDashboard() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleToggleRole(user)}
+                            onClick={() => setRoleToggleConfirmId(user.id)}
                             title={user.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
                             className="p-2 text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-all"
                           >
                             {user.role === 'admin' ? <ShieldAlert className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                           </button>
                           <button
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={() => setDeleteConfirmId(user.id)}
                             title="Delete User"
                             className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           >
@@ -371,7 +422,10 @@ export default function AdminDashboard() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-bold text-zinc-900 truncate">{user.name}</p>
+                        <p className="font-bold text-zinc-900 truncate flex items-center">
+                          {user.name}
+                          <UserBadge role={user.role} className="ml-1" />
+                        </p>
                         <p className="text-xs text-zinc-500 truncate">{user.email}</p>
                       </div>
                     </div>
@@ -391,13 +445,13 @@ export default function AdminDashboard() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleToggleRole(user)}
+                      onClick={() => setRoleToggleConfirmId(user.id)}
                       className="p-2 text-zinc-400 hover:text-brand-primary active:bg-brand-primary/10 rounded-lg transition-all"
                     >
                       {user.role === 'admin' ? <ShieldAlert className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => handleDeleteUser(user.id)}
+                      onClick={() => setDeleteConfirmId(user.id)}
                       className="p-2 text-zinc-400 hover:text-red-600 active:bg-red-50 rounded-lg transition-all"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -411,6 +465,21 @@ export default function AdminDashboard() {
 
         {activeTab === 'transactions' && (
           <>
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
+              {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => setFilterType(type)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    filterType === type 
+                      ? 'bg-zinc-900 text-white shadow-lg shadow-black/10' 
+                      : 'bg-white text-zinc-500 border border-zinc-100 hover:border-zinc-200'
+                  }`}
+                >
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
+            </div>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
@@ -426,7 +495,10 @@ export default function AdminDashboard() {
                   {filteredTransactions.map((t) => (
                     <tr key={t.id} className="hover:bg-zinc-50 transition-colors">
                       <td className="px-6 py-4">
-                        <p className="font-bold text-zinc-900">{t.user_name}</p>
+                        <p className="font-bold text-zinc-900 flex items-center">
+                          {t.user_name}
+                          <UserBadge role={t.user_role as any} className="ml-1" />
+                        </p>
                         <p className="text-xs text-zinc-500">{t.user_email}</p>
                       </td>
                       <td className="px-6 py-4">
@@ -441,8 +513,8 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <p className={`font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                          {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
+                        <p className={`font-bold ${t.type === 'income' || t.type === 'adjustment' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {t.type === 'income' || t.type === 'adjustment' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-sm text-zinc-600">{format(new Date(t.date), 'PP')}</td>
@@ -458,11 +530,14 @@ export default function AdminDashboard() {
                 <div key={t.id} className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
-                      <p className="font-bold text-zinc-900 truncate">{t.user_name}</p>
+                      <p className="font-bold text-zinc-900 truncate flex items-center">
+                        {t.user_name}
+                        <UserBadge role={t.user_role as any} className="ml-1" />
+                      </p>
                       <p className="text-[10px] text-zinc-500 truncate">{t.user_email}</p>
                     </div>
-                    <p className={`font-bold shrink-0 ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
+                    <p className={`font-bold shrink-0 ${t.type === 'income' || t.type === 'adjustment' ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {t.type === 'income' || t.type === 'adjustment' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-zinc-50 p-2 rounded-xl">
@@ -496,7 +571,10 @@ export default function AdminDashboard() {
                 <tbody className="divide-y divide-zinc-100">
                   {filteredLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-zinc-900">{log.user_name}</td>
+                      <td className="px-6 py-4 font-bold text-zinc-900 flex items-center">
+                        {log.user_name}
+                        <UserBadge role={log.user_role as any} className="ml-1" />
+                      </td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-zinc-100 rounded-lg text-xs font-bold text-zinc-700">
                           {log.action}
@@ -515,7 +593,10 @@ export default function AdminDashboard() {
               {filteredLogs.map((log) => (
                 <div key={log.id} className="p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="font-bold text-zinc-900">{log.user_name}</p>
+                    <p className="font-bold text-zinc-900 flex items-center">
+                      {log.user_name}
+                      <UserBadge role={log.user_role as any} className="ml-1" />
+                    </p>
                     <span className="px-2 py-0.5 bg-zinc-100 rounded-lg text-[10px] font-bold text-zinc-700">
                       {log.action}
                     </span>
@@ -701,6 +782,75 @@ export default function AdminDashboard() {
           </motion.div>
         </div>
       )}
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="w-10 h-10 text-red-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-zinc-900 mb-2">Delete User?</h2>
+              <p className="text-zinc-500 mb-8">Are you sure you want to delete this user? All their data will be permanently lost.</p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteUser(deleteConfirmId)}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold bg-red-600 text-white hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {roleToggleConfirmId && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-brand-primary/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Shield className="w-10 h-10 text-brand-primary" />
+              </div>
+              <h2 className="text-2xl font-bold text-zinc-900 mb-2">Change User Role?</h2>
+              <p className="text-zinc-500 mb-8">
+                Are you sure you want to change this user's role? This will change their access level.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setRoleToggleConfirmId(null)}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const user = users.find(u => u.id === roleToggleConfirmId);
+                    if (user) handleToggleRole(user);
+                  }}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold bg-brand-primary text-white hover:bg-brand-primary/90 transition-all shadow-lg shadow-brand-primary/20"
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

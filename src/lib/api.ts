@@ -178,6 +178,11 @@ export const api = {
             name,
             icon,
             color
+          ),
+          profiles (
+            name,
+            email,
+            role
           )
         `)
         .order('date', { ascending: false });
@@ -188,8 +193,9 @@ export const api = {
           category_name: t.categories?.name,
           category_icon: t.categories?.icon,
           category_color: t.categories?.color,
-          user_name: "User", // We'd need a join with profiles for user names
-          user_email: "Email",
+          user_name: t.profiles?.name || "User",
+          user_email: t.profiles?.email || "Email",
+          user_role: t.profiles?.role || "user",
         })) as Transaction[];
       }
 
@@ -223,10 +229,20 @@ export const api = {
       // Try Supabase directly first
       const { data, error } = await supabase
         .from('activity_logs')
-        .select('*')
+        .select(`
+          *,
+          profiles (
+            role
+          )
+        `)
         .order('created_at', { ascending: false });
       
-      if (!error) return data as ActivityLog[];
+      if (!error) {
+        return (data as any[]).map(l => ({
+          ...l,
+          user_role: l.profiles?.role || "user"
+        })) as ActivityLog[];
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/logs', {
@@ -374,6 +390,17 @@ export const api = {
       if (error) throw error;
       await api.logs.create('Delete Category', `Deleted category ID ${id}`);
     },
+    update: async (id: number | string, data: Partial<Category>) => {
+      const { data: result, error } = await supabase
+        .from('categories')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      await api.logs.create('Update Category', `Updated category ${data.name || id}`);
+      return result;
+    },
   },
 
   transactions: {
@@ -421,6 +448,17 @@ export const api = {
         .eq('id', id);
       if (error) throw error;
       await api.logs.create('Delete Transaction', `Deleted transaction ID ${id}`);
+    },
+    update: async (id: number | string, data: Partial<Transaction>) => {
+      const { data: result, error } = await supabase
+        .from('transactions')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      await api.logs.create('Update Transaction', `Updated transaction ID ${id}`);
+      return result;
     },
   },
 
@@ -519,6 +557,7 @@ export const api = {
         balance: totalIncome - totalExpense + totalAdjustment,
         totalIncome,
         totalExpense,
+        totalAdjustment,
         categorySpending: Object.entries(catMap).map(([name, data]) => ({
           name,
           total: data.total,

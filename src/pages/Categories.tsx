@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Category } from '../types';
-import { Plus, Trash2, Tag, Palette, Type } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Plus, Trash2, Tag, Palette, Type, Edit2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -12,6 +12,10 @@ export default function Categories() {
   const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense' | 'adjustment'>('expense');
   const [color, setColor] = useState('#3b82f6');
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadCategories();
@@ -27,23 +31,56 @@ export default function Categories() {
     }
   };
 
-  if (loading) return <LoadingSpinner message="Loading categories..." />;
+  if (loading && categories.length === 0) return <LoadingSpinner message="Loading categories..." />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
     try {
-      await api.categories.create({ name, type, color, icon: 'Tag' });
-      setName('');
+      if (editingId) {
+        await api.categories.update(editingId, { name, type, color });
+        setSuccess('Category updated successfully');
+      } else {
+        await api.categories.create({ name, type, color, icon: 'Tag' });
+        setSuccess('Category created successfully');
+      }
+      resetForm();
       loadCategories();
-    } catch (err) {
-      alert('Failed to add category');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to save category:', err);
+      setError(err.message || 'Failed to save category');
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Are you sure? This will not delete transactions in this category, but they will lose their category info.')) {
+  const resetForm = () => {
+    setName('');
+    setType('expense');
+    setColor('#3b82f6');
+    setEditingId(null);
+  };
+
+  const handleEdit = (category: Category) => {
+    setName(category.name);
+    setType(category.type);
+    setColor(category.color);
+    setEditingId(category.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id: number | string) => {
+    setError(null);
+    try {
       await api.categories.delete(id);
+      setDeleteConfirmId(null);
       loadCategories();
+      setSuccess('Category deleted successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to delete category:', err);
+      setError(err.message || 'Failed to delete category. It might be in use.');
+      setDeleteConfirmId(null);
     }
   };
 
@@ -84,8 +121,10 @@ export default function Categories() {
         await api.categories.create(cat as any);
       }
       await loadCategories();
+      setSuccess('Default categories loaded');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      alert('Failed to load defaults');
+      setError('Failed to load defaults');
     } finally {
       setLoading(false);
     }
@@ -113,11 +152,53 @@ export default function Categories() {
         )}
       </header>
 
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-2xl flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto p-1 hover:bg-red-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-3 rounded-2xl flex items-center gap-3"
+          >
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-medium">{success}</p>
+            <button onClick={() => setSuccess(null)} className="ml-auto p-1 hover:bg-emerald-100 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Add Category Form */}
+        {/* Add/Edit Category Form */}
         <div className="lg:col-span-1">
           <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6 sticky top-8">
-            <h2 className="text-xl font-bold">New Category</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">{editingId ? 'Edit Category' : 'New Category'}</h2>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="text-xs font-bold text-zinc-400 hover:text-zinc-600 flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </button>
+              )}
+            </div>
             
             <div className="space-y-2">
               <label className="text-sm font-bold text-zinc-700 flex items-center gap-2">
@@ -181,8 +262,8 @@ export default function Categories() {
               type="submit"
               className="w-full bg-brand-accent text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
             >
-              <Plus className="w-5 h-5" />
-              Create Category
+              {editingId ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+              {editingId ? 'Update Category' : 'Create Category'}
             </button>
           </form>
         </div>
@@ -190,7 +271,7 @@ export default function Categories() {
         {/* Categories List */}
         <div className="lg:col-span-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {loading ? (
+            {loading && categories.length === 0 ? (
               <p className="col-span-full text-center py-12 text-zinc-500">Loading categories...</p>
             ) : categories.length === 0 ? (
               <p className="col-span-full text-center py-12 text-zinc-500">No categories yet.</p>
@@ -201,7 +282,7 @@ export default function Categories() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
-                  className="bg-white p-5 rounded-3xl border border-black/5 shadow-sm flex items-center justify-between group"
+                  className={`bg-white p-5 rounded-3xl border shadow-sm flex items-center justify-between group transition-all ${editingId === c.id ? 'border-brand-accent ring-1 ring-brand-accent' : 'border-black/5'}`}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: c.color }}>
@@ -212,12 +293,40 @@ export default function Categories() {
                       <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">{c.type}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(c.id as number)}
-                    className="p-2 text-zinc-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {deleteConfirmId === c.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDelete(c.id)}
+                          className="p-2 text-red-600 bg-red-50 rounded-xl transition-all font-bold text-xs"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="p-2 text-zinc-400 hover:bg-zinc-100 rounded-xl transition-all"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleEdit(c)}
+                          className="p-2 text-zinc-300 hover:text-brand-primary hover:bg-brand-primary/5 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit2 className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(c.id)}
+                          className="p-2 text-zinc-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </motion.div>
               ))
             )}

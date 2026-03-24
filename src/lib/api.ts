@@ -404,8 +404,8 @@ export const api = {
   },
 
   transactions: {
-    getAll: async (): Promise<Transaction[]> => {
-      const { data, error } = await supabase
+    getAll: async (userId?: string): Promise<Transaction[]> => {
+      let query = supabase
         .from('transactions')
         .select(`
           *,
@@ -416,6 +416,12 @@ export const api = {
           )
         `)
         .order('date', { ascending: false });
+      
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      
+      const { data, error } = await query;
       
       if (error) throw error;
       
@@ -523,13 +529,25 @@ export const api = {
   },
 
   summary: {
-    get: async (): Promise<Summary> => {
+    get: async (userId?: string, startDate?: string, endDate?: string): Promise<Summary> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data: transactions, error } = await supabase
+      const targetUserId = userId || user.id;
+
+      let query = supabase
         .from('transactions')
-        .select('amount, type, category_id, categories(name, color)');
+        .select('amount, type, date, category_id, categories(name, color)')
+        .eq('user_id', targetUserId);
+      
+      if (startDate) {
+        query = query.gte('date', startDate);
+      }
+      if (endDate) {
+        query = query.lte('date', endDate);
+      }
+
+      const { data: transactions, error } = await query;
       
       if (error) throw error;
 

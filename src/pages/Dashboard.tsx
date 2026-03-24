@@ -3,10 +3,11 @@ import { api } from '../lib/api';
 import { useAuth } from '../App';
 import { useNavigate } from 'react-router-dom';
 import { Summary, Transaction } from '../types';
-import { TrendingUp, TrendingDown, Wallet, Plus, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Plus, ShieldCheck, CheckCircle2, Calendar, ChevronDown } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { motion } from 'motion/react';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { getMonthOptions } from '../lib/dateUtils';
 
 import LoadingSpinner from '../components/LoadingSpinner';
 import UserBadge from '../components/UserBadge';
@@ -14,25 +15,31 @@ import UserBadge from '../components/UserBadge';
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [loading, setLoading] = useState(true);
 
   const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59);
+    
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
 
+    setLoading(true);
     Promise.all([
-      api.summary.get(),
+      api.summary.get(undefined, startIso, endIso),
       api.transactions.getAll()
     ]).then(([s, t]) => {
       setSummary(s);
-      // Filter transactions for current month
-      const currentMonthTransactions = t.filter(trans => trans.date >= startOfMonth);
-      setRecentTransactions(currentMonthTransactions.slice(0, 5));
+      // Filter transactions for selected month for the recent list
+      const filteredTransactions = t.filter(trans => trans.date >= startIso && trans.date <= endIso);
+      setRecentTransactions(filteredTransactions.slice(0, 5));
     }).finally(() => setLoading(false));
-  }, []);
+  }, [selectedMonth]);
 
   if (loading) return <LoadingSpinner message="Loading your dashboard..." />;
   const stats = [
@@ -46,11 +53,11 @@ export default function Dashboard() {
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center text-brand-primary text-2xl font-bold overflow-hidden border-2 border-white shadow-sm relative">
+          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center text-brand-primary text-2xl font-bold overflow-hidden border-2 border-white shadow-sm relative shrink-0">
             {user?.avatar_url ? (
               <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
             ) : (
-              user?.name.charAt(0)
+              (user?.name || 'U').charAt(0)
             )}
             <div className="absolute bottom-0 right-0">
               {user?.role === 'admin' ? (
@@ -72,17 +79,32 @@ export default function Dashboard() {
             <p className="text-zinc-500 flex items-center gap-1">
               Welcome back, {user?.name}
               <UserBadge role={user?.role} className="ml-0.5" />
-              ! Here's your monthly summary.
+              ! Here's your {selectedMonth === format(new Date(), 'yyyy-MM') ? 'monthly' : format(new Date(selectedMonth), 'MMMM yyyy')} summary.
             </p>
           </div>
         </div>
-        <button 
-          onClick={() => navigate('/transactions?add=true')}
-          className="flex items-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
-        >
-          <Plus className="w-5 h-5" />
-          Add Transaction
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-black/5 shadow-sm">
+            <Calendar className="w-4 h-4 ml-3 text-zinc-400" />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer pr-8"
+            >
+              {getMonthOptions(60).map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 -ml-7 mr-3 text-zinc-400 pointer-events-none" />
+          </div>
+          <button 
+            onClick={() => navigate('/transactions?add=true')}
+            className="flex items-center justify-center gap-2 bg-brand-accent text-white px-6 py-3 rounded-2xl font-bold hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+          >
+            <Plus className="w-5 h-5" />
+            Add Transaction
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -92,7 +114,8 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm"
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm hover:shadow-md transition-all"
           >
             <div className="flex items-center justify-between mb-4">
               <div className={`p-3 rounded-2xl ${stat.color}`}>

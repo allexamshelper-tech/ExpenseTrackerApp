@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Budget, Category, Transaction } from '../types';
-import { Target, Plus, AlertCircle, CheckCircle2, TrendingUp, Trash2, Edit2, X } from 'lucide-react';
+import { Target, Plus, AlertCircle, CheckCircle2, TrendingUp, Trash2, Edit2, X, Calendar, ChevronDown } from 'lucide-react';
 import { format, startOfMonth } from 'date-fns';
+import { getMonthOptions } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -108,9 +109,24 @@ export default function Budgets() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Budgets</h1>
-        <p className="text-zinc-500">Set monthly limits for your expense categories.</p>
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Budgets</h1>
+          <p className="text-zinc-500">Set monthly limits for your expense categories.</p>
+        </div>
+        <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-black/5 shadow-sm">
+          <Calendar className="w-4 h-4 ml-3 text-zinc-400" />
+          <select
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="bg-transparent px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer pr-8"
+          >
+            {getMonthOptions(60).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown className="w-4 h-4 -ml-7 mr-3 text-zinc-400 pointer-events-none" />
+        </div>
       </header>
 
       <AnimatePresence>

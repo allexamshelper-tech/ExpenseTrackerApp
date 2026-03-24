@@ -3,7 +3,8 @@ import { api } from '../lib/api';
 import { useSearchParams } from 'react-router-dom';
 import { Transaction, Category } from '../types';
 import { Plus, Search, Filter, Trash2, Calendar, IndianRupee, Tag, FileText, ChevronDown, RefreshCw, Edit2, X, AlertCircle, CheckCircle2, Download, Copy } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { getMonthOptions } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 
@@ -168,6 +169,7 @@ export default function Transactions() {
   const [showAddForm, setShowAddForm] = useState(searchParams.get('add') === 'true');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'adjustment'>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   // Form State
@@ -320,7 +322,17 @@ export default function Transactions() {
     const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           t.category_name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || t.type === filterType;
-    return matchesSearch && matchesType;
+    
+    let matchesMonth = true;
+    if (selectedMonth !== 'all') {
+      const transDate = new Date(t.date);
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0, 23, 59, 59);
+      matchesMonth = isWithinInterval(transDate, { start, end });
+    }
+    
+    return matchesSearch && matchesType && matchesMonth;
   });
 
   return (
@@ -496,8 +508,41 @@ export default function Transactions() {
       </AnimatePresence>
 
       {/* Filters & Search */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 flex flex-wrap gap-2">
+            {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={`flex-1 sm:flex-none px-6 py-3 rounded-2xl font-bold capitalize transition-all text-sm ${
+                  filterType === type 
+                    ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                    : 'bg-white text-zinc-500 hover:bg-zinc-50 border border-black/5'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+          
+          <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-black/5">
+            <Calendar className="w-4 h-4 ml-3 text-zinc-400" />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer"
+            >
+              <option value="all">All Months</option>
+              {getMonthOptions(60).map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 mr-3 text-zinc-400" />
+          </div>
+        </div>
+        
+        <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
           <input
             type="text"
@@ -506,21 +551,6 @@ export default function Transactions() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white border border-black/5 focus:border-black outline-none transition-all"
           />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`flex-1 sm:flex-none px-4 sm:px-6 py-3 rounded-2xl font-bold capitalize transition-all text-sm sm:text-base ${
-                filterType === type 
-                  ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-                  : 'bg-white text-zinc-500 hover:bg-zinc-50 border border-black/5'
-              }`}
-            >
-              {type}
-            </button>
-          ))}
         </div>
       </div>
 

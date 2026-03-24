@@ -17,6 +17,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
+import UserReview from './pages/UserReview';
 import Home from './pages/Home';
 import SplashScreen from './components/SplashScreen';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -257,6 +258,14 @@ export default function App() {
                       element={
                         <AdminRoute>
                           <AdminDashboard />
+                        </AdminRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/admin/user/:userId" 
+                      element={
+                        <AdminRoute>
+                          <UserReview />
                         </AdminRoute>
                       } 
                     />

@@ -1,24 +1,29 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { User, Transaction, ActivityLog } from '../types';
-import { Users, Receipt, History, Search, Filter, Download, Trash2, Shield, ShieldAlert, UserPlus, X, CheckCircle2, ShieldCheck, RefreshCw, Edit2, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Transaction, ActivityLog, Category } from '../types';
+import { Users, Receipt, History, Search, Filter, Download, Trash2, Shield, ShieldAlert, UserPlus, X, CheckCircle2, ShieldCheck, RefreshCw, Edit2, Eye, EyeOff, AlertCircle, CheckCircle, Calendar, ChevronDown, LayoutDashboard, Tag, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format } from 'date-fns';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { format, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
+import { getMonthOptions } from '../lib/dateUtils';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line } from 'recharts';
 
 import LoadingSpinner from '../components/LoadingSpinner';
 import UserBadge from '../components/UserBadge';
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users' | 'transactions' | 'logs'>('users');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'transactions' | 'logs' | 'categories'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'user'>('all');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'adjustment'>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -42,14 +47,16 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       console.log('Fetching admin data...');
-      const [usersData, transData, logsData] = await Promise.all([
+      const [usersData, transData, logsData, catsData] = await Promise.all([
         api.admin.getAllUsers(),
         api.admin.getAllTransactions(),
-        api.admin.getAllLogs()
+        api.admin.getAllLogs(),
+        api.categories.getAll()
       ]);
       setUsers(usersData);
       setTransactions(transData);
       setLogs(logsData);
+      setCategories(catsData);
     } catch (err: any) {
       console.error('Error fetching admin data:', err);
       setError(`Error fetching admin data: ${err.message || 'Unknown error'}`);
@@ -161,17 +168,39 @@ export default function AdminDashboard() {
     (filterRole === 'all' || u.role === filterRole)
   );
 
-  const filteredTransactions = transactions.filter(t =>
-    ((t.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-     (t.description || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
-    (filterType === 'all' || t.type === filterType)
-  );
+  const filteredTransactions = transactions.filter(t => {
+    const matchesSearch = (t.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (t.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === 'all' || t.type === filterType;
+    
+    let matchesMonth = true;
+    if (selectedMonth !== 'all') {
+      const transDate = new Date(t.date);
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0, 23, 59, 59);
+      matchesMonth = isWithinInterval(transDate, { start, end });
+    }
+    
+    return matchesSearch && matchesType && matchesMonth;
+  });
 
   const filteredLogs = logs.filter(l =>
     ((l.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
      (l.action || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
      (l.details || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Calculate user balances from all transactions
+  const userBalances = transactions.reduce((acc: Record<string, number>, t) => {
+    const amount = Number(t.amount) || 0;
+    if (t.type === 'income' || t.type === 'adjustment') {
+      acc[t.user_id] = (acc[t.user_id] || 0) + amount;
+    } else if (t.type === 'expense') {
+      acc[t.user_id] = (acc[t.user_id] || 0) - amount;
+    }
+    return acc;
+  }, {});
 
   // Chart Data
   const userStats = users.reduce((acc: any, user) => {
@@ -180,7 +209,56 @@ export default function AdminDashboard() {
     return acc;
   }, {});
 
-  const chartData = Object.entries(userStats).map(([name, value]) => ({ name, value }));
+  const chartData = Object.entries(userStats).map(([name, value]) => ({ name, value: value as number }));
+
+  // Overview calculations
+  const overviewStats = transactions.reduce((acc, t) => {
+    const transDate = new Date(t.date);
+    let matchesMonth = true;
+    if (selectedMonth !== 'all') {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0, 23, 59, 59);
+      matchesMonth = isWithinInterval(transDate, { start, end });
+    }
+
+    if (matchesMonth) {
+      if (t.type === 'income') acc.income += t.amount;
+      if (t.type === 'expense') acc.expense += t.amount;
+      acc.activeUsers.add(t.user_id);
+      
+      // Category stats
+      if (t.type === 'expense') {
+        const catName = t.category_name || 'Other';
+        acc.categoryStats[catName] = (acc.categoryStats[catName] || 0) + t.amount;
+      }
+
+      // User activity
+      acc.userActivity[t.user_id] = (acc.userActivity[t.user_id] || 0) + 1;
+    }
+    return acc;
+  }, { income: 0, expense: 0, activeUsers: new Set<string>(), categoryStats: {} as Record<string, number> , userActivity: {} as Record<string, number> });
+
+  const topUsers = Object.entries(overviewStats.userActivity)
+    .map(([id, count]) => {
+      const user = users.find(u => u.id === id);
+      return { id, count: count as number, name: user?.name || 'Unknown', email: user?.email || 'No Email' };
+    })
+    .sort((a, b) => (b.count as number) - (a.count as number))
+    .slice(0, 5);
+
+  const topUsersByBalance = [...users]
+    .sort((a, b) => (userBalances[b.id] || 0) - (userBalances[a.id] || 0))
+    .slice(0, 5);
+
+  const overviewPieData = [
+    { name: 'Income', value: overviewStats.income, color: '#10b981' },
+    { name: 'Expense', value: overviewStats.expense, color: '#ef4444' }
+  ];
+
+  const categoryChartData = Object.entries(overviewStats.categoryStats)
+    .map(([name, value]) => ({ name, value: value as number }))
+    .sort((a, b) => (b.value as number) - (a.value as number));
 
   if (loading) return <LoadingSpinner message="Loading admin dashboard..." />;
 
@@ -294,29 +372,231 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 p-1 bg-zinc-100 rounded-2xl w-full sm:w-fit">
         <button
-          onClick={() => setActiveTab('users')}
-          className={`flex-1 sm:flex-none px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+          onClick={() => setActiveTab('overview')}
+          className={`flex-1 sm:flex-none flex items-center gap-2 px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
         >
+          <LayoutDashboard className="w-4 h-4" />
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex-1 sm:flex-none flex items-center gap-2 px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+        >
+          <Users className="w-4 h-4" />
           Users
         </button>
         <button
           onClick={() => setActiveTab('transactions')}
-          className={`flex-1 sm:flex-none px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'transactions' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+          className={`flex-1 sm:flex-none flex items-center gap-2 px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'transactions' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
         >
+          <Receipt className="w-4 h-4" />
           Transactions
         </button>
         <button
           onClick={() => setActiveTab('logs')}
-          className={`flex-1 sm:flex-none px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'logs' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+          className={`flex-1 sm:flex-none flex items-center gap-2 px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'logs' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
         >
+          <History className="w-4 h-4" />
           Activity Logs
+        </button>
+        <button
+          onClick={() => setActiveTab('categories')}
+          className={`flex-1 sm:flex-none flex items-center gap-2 px-6 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'categories' ? 'bg-white text-brand-primary shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+        >
+          <Tag className="w-4 h-4" />
+          Categories
         </button>
       </div>
 
       {/* Content */}
       <div className="bg-white rounded-3xl border border-brand-card-border/10 shadow-sm overflow-hidden">
+        {activeTab === 'overview' && (
+          <div className="space-y-8 p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-zinc-900">System Overview</h2>
+              <div className="flex items-center gap-2 bg-zinc-50 p-1 rounded-xl border border-zinc-100">
+                <Calendar className="w-4 h-4 ml-2 text-zinc-400" />
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-transparent px-3 py-1.5 text-xs font-bold outline-none appearance-none cursor-pointer pr-8"
+                >
+                  <option value="all">All Time</option>
+                  {getMonthOptions(60).map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 -ml-7 mr-2 text-zinc-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <motion.div 
+                whileHover={{ y: -4 }}
+                className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 shadow-sm hover:shadow-md transition-all"
+              >
+                <p className="text-emerald-600 text-sm font-medium mb-1">Total Income</p>
+                <p className="text-2xl font-bold text-emerald-900">₹{overviewStats.income.toLocaleString()}</p>
+              </motion.div>
+              <motion.div 
+                whileHover={{ y: -4 }}
+                className="bg-red-50 p-6 rounded-3xl border border-red-100 shadow-sm hover:shadow-md transition-all"
+              >
+                <p className="text-red-600 text-sm font-medium mb-1">Total Expenses</p>
+                <p className="text-2xl font-bold text-red-900">₹{overviewStats.expense.toLocaleString()}</p>
+              </motion.div>
+              <motion.div 
+                whileHover={{ y: -4 }}
+                className="bg-blue-50 p-6 rounded-3xl border border-blue-100 shadow-sm hover:shadow-md transition-all"
+              >
+                <p className="text-blue-600 text-sm font-medium mb-1">Net Flow</p>
+                <p className="text-2xl font-bold text-blue-900">₹{(overviewStats.income - overviewStats.expense).toLocaleString()}</p>
+              </motion.div>
+              <motion.div 
+                whileHover={{ y: -4 }}
+                className="bg-purple-50 p-6 rounded-3xl border border-purple-100 shadow-sm hover:shadow-md transition-all"
+              >
+                <p className="text-purple-600 text-sm font-medium mb-1">Active Users</p>
+                <p className="text-2xl font-bold text-purple-900">{overviewStats.activeUsers.size}</p>
+              </motion.div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900 mb-6">Income vs Expense</h3>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={overviewPieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {overviewPieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value: number) => `₹${value.toLocaleString()}`}
+                      />
+                      <Legend verticalAlign="bottom" height={36}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900 mb-6">System Spending by Category</h3>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryChartData.slice(0, 6)} layout="vertical">
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={100} 
+                        tick={{ fontSize: 12 }}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'transparent' }}
+                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value: number) => `₹${value.toLocaleString()}`}
+                      />
+                      <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Active Users */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-zinc-900">Top Active Users</h3>
+                  <p className="text-xs text-zinc-500">By transaction count</p>
+                </div>
+                <div className="space-y-4">
+                  {topUsers.map((user) => (
+                    <div key={user.id} className="bg-white p-4 rounded-2xl border border-zinc-100 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold shrink-0">
+                          {user.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-zinc-900 truncate text-sm">{user.name}</p>
+                          <p className="text-[10px] text-zinc-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <p className="text-xs font-bold text-brand-primary bg-brand-primary/5 px-2 py-1 rounded-lg">
+                          {user.count} Trans.
+                        </p>
+                        <button
+                          onClick={() => navigate(`/admin/user/${user.id}`)}
+                          className="text-[10px] font-bold text-zinc-400 hover:text-brand-primary transition-colors"
+                        >
+                          Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {topUsers.length === 0 && (
+                    <div className="py-8 text-center text-zinc-500 text-sm italic">
+                      No user activity found
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-zinc-900">Top Users by Balance</h3>
+                  <p className="text-xs text-zinc-500">Current wallet balance</p>
+                </div>
+                <div className="space-y-4">
+                  {topUsersByBalance.map((user) => (
+                    <div key={user.id} className="bg-white p-4 rounded-2xl border border-zinc-100 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold shrink-0">
+                          {user.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-zinc-900 truncate text-sm">{user.name}</p>
+                          <p className="text-[10px] text-zinc-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <p className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                          ₹{(userBalances[user.id] || 0).toLocaleString()}
+                        </p>
+                        <button
+                          onClick={() => navigate(`/admin/user/${user.id}`)}
+                          className="text-[10px] font-bold text-zinc-400 hover:text-brand-primary transition-colors"
+                        >
+                          Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {topUsersByBalance.length === 0 && (
+                    <div className="py-8 text-center text-zinc-500 text-sm italic">
+                      No user data found
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'users' && (
-          <>
+          <div className="p-6">
             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
               {(['all', 'admin', 'user'] as const).map(role => (
                 <button
@@ -340,6 +620,7 @@ export default function AdminDashboard() {
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">User</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Contact</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Joined</th>
+                    <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Balance</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Role</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Actions</th>
                   </tr>
@@ -368,6 +649,11 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 text-sm text-zinc-600">{user.phone || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm text-zinc-600">{format(new Date(user.created_at || Date.now()), 'PP')}</td>
                       <td className="px-6 py-4">
+                        <p className={`text-sm font-bold ${(userBalances[user.id] || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          ₹{(userBalances[user.id] || 0).toLocaleString()}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider w-fit ${user.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                           {user.role}
                           {user.role === 'admin' ? (
@@ -379,6 +665,14 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => navigate(`/admin/user/${user.id}`)}
+                            title="Review User Dashboard & Transactions"
+                            className="flex items-center gap-2 px-3 py-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl transition-all font-bold text-xs"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Review
+                          </button>
                           <button
                             onClick={() => handleEditUser(user)}
                             title="Edit User"
@@ -434,10 +728,25 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-xs text-zinc-500">
-                    <span>{user.phone || 'No phone'}</span>
-                    <span>Joined {format(new Date(user.created_at || Date.now()), 'MMM d, yyyy')}</span>
+                    <div className="flex flex-col">
+                      <span>{user.phone || 'No phone'}</span>
+                      <span>Joined {format(new Date(user.created_at || Date.now()), 'MMM d, yyyy')}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-bold ${(userBalances[user.id] || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        ₹{(userBalances[user.id] || 0).toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Balance</p>
+                    </div>
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-50">
+                    <button
+                      onClick={() => navigate(`/admin/user/${user.id}`)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-brand-primary/10 text-brand-primary active:bg-brand-primary active:text-white rounded-lg transition-all font-bold text-[10px]"
+                    >
+                      <Eye className="w-3 h-3" />
+                      Review Dashboard
+                    </button>
                     <button
                       onClick={() => handleEditUser(user)}
                       className="p-2 text-zinc-400 hover:text-brand-primary active:bg-brand-primary/10 rounded-lg transition-all"
@@ -460,25 +769,42 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
 
         {activeTab === 'transactions' && (
-          <>
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
-              {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
-                <button
-                  key={type}
-                  onClick={() => setFilterType(type)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                    filterType === type 
-                      ? 'bg-zinc-900 text-white shadow-lg shadow-black/10' 
-                      : 'bg-white text-zinc-500 border border-zinc-100 hover:border-zinc-200'
-                  }`}
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {(['all', 'income', 'expense', 'adjustment'] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setFilterType(type)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                      filterType === type 
+                        ? 'bg-zinc-900 text-white shadow-lg shadow-black/10' 
+                        : 'bg-white text-zinc-500 border border-zinc-100 hover:border-zinc-200'
+                    }`}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
+                <Calendar className="w-4 h-4 ml-3 text-zinc-400" />
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-transparent px-3 py-2 text-xs font-bold outline-none appearance-none cursor-pointer pr-8"
                 >
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </button>
-              ))}
+                  <option value="all">All Months</option>
+                  {getMonthOptions(60).map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 -ml-7 mr-3 text-zinc-400 pointer-events-none" />
+              </div>
             </div>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
@@ -489,6 +815,7 @@ export default function AdminDashboard() {
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Transaction</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -518,6 +845,14 @@ export default function AdminDashboard() {
                         </p>
                       </td>
                       <td className="px-6 py-4 text-sm text-zinc-600">{format(new Date(t.date), 'PP')}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => navigate(`/admin/user/${t.user_id}`)}
+                          className="px-3 py-1.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-lg transition-all font-bold text-[10px]"
+                        >
+                          Review User
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -549,14 +884,23 @@ export default function AdminDashboard() {
                       <p className="text-[10px] text-zinc-500">{t.category_name} • {format(new Date(t.date), 'MMM d, yyyy')}</p>
                     </div>
                   </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-zinc-50">
+                    <button
+                      onClick={() => navigate(`/admin/user/${t.user_id}`)}
+                      className="text-[10px] font-bold text-brand-primary hover:underline"
+                    >
+                      Review User Dashboard
+                    </button>
+                    <p className="text-[10px] text-zinc-400">{format(new Date(t.date), 'MMM d, yyyy HH:mm')}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
 
         {activeTab === 'logs' && (
-          <>
+          <div className="p-6">
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
@@ -606,7 +950,51 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
-          </>
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-zinc-900">System Categories</h2>
+              <button
+                onClick={() => {
+                  setError('Category management is coming soon!');
+                }}
+                className="flex items-center gap-2 bg-brand-primary text-white px-4 py-2 rounded-xl font-bold hover:bg-brand-primary/90 transition-all text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                New Category
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categories.map((cat) => (
+                <div key={cat.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between group">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm"
+                      style={{ backgroundColor: cat.color }}
+                    >
+                      <Tag className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-zinc-900">{cat.name}</p>
+                      <p className="text-xs text-zinc-500">{cat.type.charAt(0).toUpperCase() + cat.type.slice(1)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button className="p-2 text-zinc-400 hover:text-brand-primary rounded-lg transition-all">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button className="p-2 text-zinc-400 hover:text-red-600 rounded-lg transition-all">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

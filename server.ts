@@ -173,12 +173,22 @@ async function startServer() {
     }
   };
 
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development"
+    });
+  });
+
   // Admin API Routes
   app.get("/api/admin/users", isAdmin, async (req, res) => {
+    console.log("GET /api/admin/users hit");
     try {
       const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
       if (error) {
-        console.error("Admin users error details:", error.message, error.details, error.hint, error.code);
+        console.error("Admin users error details:", error.message);
         return res.status(500).json({ message: error.message || "Failed to fetch users" });
       }
       res.json(data);
@@ -189,8 +199,8 @@ async function startServer() {
   });
 
   app.get("/api/admin/transactions", isAdmin, async (req, res) => {
+    console.log("GET /api/admin/transactions hit");
     try {
-      // Try a simpler query first if the join fails
       const { data, error } = await supabase
         .from("transactions")
         .select(`
@@ -200,7 +210,7 @@ async function startServer() {
         .order("date", { ascending: false });
       
       if (error) {
-        console.error("Admin transactions error details:", error.message, error.details, error.hint, error.code);
+        console.error("Admin transactions error details:", error.message);
         return res.status(500).json({ message: error.message || "Failed to fetch transactions" });
       }
       
@@ -209,7 +219,6 @@ async function startServer() {
         category_name: t.categories?.name,
         category_icon: t.categories?.icon,
         category_color: t.categories?.color,
-        // We'll skip user details for now if the join is problematic
         user_name: "User",
         user_email: "Email",
       }));
@@ -222,10 +231,11 @@ async function startServer() {
   });
 
   app.get("/api/admin/logs", isAdmin, async (req, res) => {
+    console.log("GET /api/admin/logs hit");
     try {
       const { data, error } = await supabase.from("activity_logs").select("*").order("created_at", { ascending: false });
       if (error) {
-        console.error("Admin logs error details:", error.message, error.details, error.hint, error.code);
+        console.error("Admin logs error details:", error.message);
         return res.status(500).json({ message: error.message || "Failed to fetch logs" });
       }
       res.json(data);
@@ -236,6 +246,7 @@ async function startServer() {
   });
 
   app.post("/api/admin/create-user", isAdmin, async (req, res) => {
+    console.log("POST /api/admin/create-user hit", req.body.email);
     const { email, password, name, phone, role, sendEmail } = req.body;
     
     try {
@@ -243,7 +254,6 @@ async function startServer() {
         throw new Error("Supabase Admin SDK not initialized. Ensure SUPABASE_SERVICE_ROLE_KEY is set.");
       }
 
-      // 1. Create user in Supabase Auth
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email,
         password,
@@ -252,12 +262,10 @@ async function startServer() {
       });
 
       if (authError) {
-        console.error("Admin create user auth error:", JSON.stringify(authError, null, 2));
+        console.error("Admin create user auth error:", authError.message);
         return res.status(400).json({ message: authError.message });
       }
 
-      // 2. Ensure profile exists with correct role
-      // We use upsert here to be safe, in case the trigger didn't run or we want to override the role
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({ 
@@ -269,10 +277,9 @@ async function startServer() {
         });
 
       if (profileError) {
-        console.error("Admin create user profile error:", JSON.stringify(profileError, null, 2));
+        console.error("Admin create user profile error:", profileError.message);
       }
 
-      // 3. Send welcome email if requested
       if (sendEmail) {
         try {
           const html = getEmailTemplate(
@@ -298,19 +305,18 @@ async function startServer() {
           });
         } catch (emailErr) {
           console.error("Failed to send welcome email:", emailErr);
-          // Don't fail the whole request if email fails
         }
       }
 
       res.json({ success: true, user: authUser.user });
     } catch (error: any) {
-      console.error("Admin create user catch error:", error);
+      console.error("Admin create user catch error:", error.message || error);
       res.status(500).json({ message: error.message || "Internal server error creating user" });
     }
   });
 
   app.post("/api/admin/sync-profiles", isAdmin, async (req, res) => {
-    console.log("Sync profiles route hit");
+    console.log("POST /api/admin/sync-profiles hit");
     try {
       if (!supabase.auth.admin) {
         console.error("Supabase Admin SDK not initialized");
@@ -318,7 +324,7 @@ async function startServer() {
           message: "Supabase Admin SDK not initialized. Ensure SUPABASE_SERVICE_ROLE_KEY is set in Secrets." 
         });
       }
-      // Fetch all users from Auth
+      
       console.log("Listing users from auth.admin...");
       const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
       if (authError) {
@@ -349,6 +355,12 @@ async function startServer() {
       console.error("Sync profiles catch error:", error.message || error);
       res.status(500).json({ message: error.message || "Internal server error syncing profiles" });
     }
+  });
+
+  // Catch-all for API routes to return JSON 404 instead of HTML
+  app.all("/api/*", (req, res) => {
+    console.warn(`API route not found: ${req.method} ${req.url}`);
+    res.status(404).json({ message: `API route not found: ${req.method} ${req.url}` });
   });
 
   // API Routes
